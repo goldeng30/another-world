@@ -9,15 +9,24 @@
   rd.shadowMap.enabled = true; rd.shadowMap.type = T.PCFSoftShadowMap;
   const scene = new T.Scene(); scene.background = new T.Color('#0d1015'); scene.fog = new T.Fog('#0d1015', 300, 800);
   const cam = new T.PerspectiveCamera(30, 1, 2, 3000);
-  scene.add(new T.HemisphereLight(0xbfcbdc, 0x2a2622, 0.55));
-  const key = new T.DirectionalLight(0xfff1e2, 1.5); key.position.set(-120, 260, 190); key.castShadow = true;
+  const DUN = !!window.MAKE_DUNGEON; if (DUN) { scene.background.set('#06080b'); scene.fog.color.set('#07090c'); }
+  // 던전은 어둡게: 전체를 비추는 빛은 약하게 두고, 주인공 머리 위 따뜻한 불빛(HL)과 횃불·모닥불이 밝은 자리를 만든다
+  scene.add(new T.HemisphereLight(DUN ? 0x8a9ab2 : 0xbfcbdc, DUN ? 0x241d18 : 0x2a2622, DUN ? 0.1 : 0.55));
+  const key = new T.DirectionalLight(DUN ? 0xffe2c4 : 0xfff1e2, DUN ? 0.4 : 1.5); key.position.set(-120, 260, 190); key.castShadow = true;
+  const HL = DUN ? new T.PointLight(0xffc890, 1.5, 460, 2) : null; if (HL) { HL.position.set(0, 160, 0); scene.add(HL); }
   Object.assign(key.shadow.camera, { left: -110, right: 110, top: 150, bottom: -40, near: 50, far: 700 }); key.shadow.mapSize.set(TOUCH ? 1024 : 2048, TOUCH ? 1024 : 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.6;
   scene.add(key); scene.add(key.target); const KEY_OFF = key.position.clone();
-  const rim = new T.DirectionalLight(0x6fb4ff, 0.85); rim.position.set(170, 130, -210); scene.add(rim);
-  const fill = new T.DirectionalLight(0xffffff, 0.25); fill.position.set(160, 60, 140); scene.add(fill);
-  scene.environment = MAKE_ENV(rd);
-  // 바닥: 가운데만 밝고 가장자리는 배경으로 사라지는 원 + 옅은 게이트 고리
-  {
+  const rim = new T.DirectionalLight(DUN ? 0x8fb0d8 : 0x6fb4ff, DUN ? 0.25 : 0.85); rim.position.set(170, 130, -210); scene.add(rim);
+  const fill = new T.DirectionalLight(0xffffff, DUN ? 0.05 : 0.25); fill.position.set(160, 60, 140); scene.add(fill);
+  // 던전: 캐릭터·배경이 같은 동굴 주변광을 같은 세기로 받는다(어두운 돌빛 + 횃불 쪽 주황, 마석 쪽 파랑)
+  const caveEnv = () => { const es = new T.Scene(), sg = new T.SphereGeometry(100, 32, 16), cols = [], pa = sg.attributes.position;
+    for (let i = 0; i < pa.count; i++) { const y = pa.getY(i) / 100, c = y > 0 ? new T.Color('#403c38').lerp(new T.Color('#50525a'), y) : new T.Color('#403428').lerp(new T.Color('#18130e'), -y); cols.push(c.r, c.g, c.b); }
+    sg.setAttribute('color', new T.Float32BufferAttribute(cols, 3)); es.add(new T.Mesh(sg, new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide })));
+    for (const [x, y, z, w, col] of [[-70, 25, -40, 24, '#c88250'], [60, 20, 50, 16, '#c0703a'], [40, 30, -60, 20, '#4f86c0']]) { const pl = new T.Mesh(new T.PlaneGeometry(w, w), new T.MeshBasicMaterial({ color: col, side: T.DoubleSide })); pl.position.set(x, y, z); pl.lookAt(0, 0, 0); es.add(pl); }
+    return new T.PMREMGenerator(rd).fromScene(es, 0.04).texture; };
+  scene.environment = DUN ? caveEnv() : MAKE_ENV(rd); const ENV_K = DUN ? 0.3 : null;   // 던전에서는 모든 재질 주변광 세기를 같게(어둡게) 통일
+  // 바닥: 가운데만 밝고 가장자리는 배경으로 사라지는 원 + 옅은 게이트 고리(던전이 없을 때만)
+  if (!DUN) {
     const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d');
     const gr = g.createRadialGradient(256, 256, 0, 256, 256, 256); gr.addColorStop(0, '#2a313b'); gr.addColorStop(0.55, '#1c222a'); gr.addColorStop(1, 'rgba(23,28,35,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 512, 512);
@@ -42,11 +51,13 @@
 
   // ── 모델 불러오기 ──
   const tl = new T.TextureLoader(), loadTex = u => new Promise((res, rej) => tl.load(u, res, undefined, rej));
+  const DG = DUN ? await MAKE_DUNGEON(T, scene, { loadTex }) : null;   // F급 던전 첫 구역 배경
+  if (DG) DG.root.traverse(o => { if (o.material) for (const m of [].concat(o.material)) if (m.isMeshStandardMaterial) m.envMapIntensity = ENV_K; });
   const [gltf, baseTex, nrmTex, eyeTex] = await Promise.all([new Promise((res, rej) => { const bin = atob(window.DOYUN_GLB), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new T.GLTFLoader().parse(u8.buffer, '', res, rej); }), loadTex('doyun_base.webp'), loadTex('doyun_nrm.webp'), loadTex('doyun_eyes.webp')]);
   baseTex.encoding = T.sRGBEncoding; baseTex.anisotropy = 8; eyeTex.encoding = T.sRGBEncoding; eyeTex.anisotropy = 8; eyeTex.wrapS = eyeTex.wrapT = T.ClampToEdgeWrapping;
   const root = gltf.scene; scene.add(root);
   let sm = null; root.traverse(o => { if (o.isSkinnedMesh && !sm) sm = o; });
-  sm.material = new T.MeshStandardMaterial({ map: baseTex, normalMap: nrmTex, roughness: 0.88, metalness: 0.0, envMapIntensity: 0.55, skinning: true });
+  sm.material = new T.MeshStandardMaterial({ map: baseTex, normalMap: nrmTex, roughness: 0.88, metalness: 0.0, envMapIntensity: ENV_K || 0.55, skinning: true });
   // 눈: 얼굴 면(_eyew)에만 정면 투영으로 선명한 눈 그림을 얹고, 눈 뜬 자리는 반짝이게 (쉬는 자세 기준 좌표라 동작해도 따라감)
   const EYE = { SX: -0.064805, HY: 91.273994, CXR: -1.79, CXL: 1.51, CY: -1.47, XI: -0.72, YI: -0.18, XO: 1.0, YO: 0.13, UP: 0.28, LO: 0.27, PU: 0.8, MX: 0.0, MY: -4.45 };
   if (sm.geometry.attributes._eyew) sm.material.onBeforeCompile = sh => {
@@ -215,6 +226,13 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     const M = new T.Matrix4().compose(no, nq, ws), Ml = new T.Matrix4().copy(B.RightHand.matrixWorld).invert().multiply(M); Ml.decompose(pipe.position, pipe.quaternion, V());
     pipe.updateMatrixWorld(true);
   }
+  // 파이프 자세: 보통은 두 주먹을 잇는 선(aimPipe). 동작에 hand 구간이 있으면 그동안 오른손 방향(칼이 손에 붙은 것처럼)으로 섞는다
+  function posePipe(a, t) { if (!a.pipe) return; if (!a.two) { setGrip(a.wy); return; }
+    const w = a.hand ? sstep(a.hand[0], a.hand[1], t) * (1 - sstep(a.hand[2], a.hand[3], t)) : 0; setGrip(a.wy);
+    if (w >= 1) { pipe.updateMatrixWorld(true); return; }
+    const qb = pipe.quaternion.clone(), pb = pipe.position.clone(); aimPipe(a.wy); if (w <= 0) return;
+    const g = V(0, a.wy * pipe.scale.y, 0), Rl = pb.clone().add(g.clone().applyQuaternion(qb)), q = pipe.quaternion.clone().slerp(qb, w);
+    pipe.quaternion.copy(q); pipe.position.copy(Rl).sub(g.applyQuaternion(q)); pipe.updateMatrixWorld(true); }
   // 동작 목록: 빈손은 손을 가볍게, 무기는 쇠파이프를 쥔다. 무기 들고 달리기 = 달리기의 몸·다리 + 대검 걷기의 팔(박자 맞춤)
   const ACTS = {
     wwalk: { label: '무기 들고 걷기', clip: 'Great_Sword_Walk', pipe: true, two: true, wy: 19, fwd: true },
@@ -226,13 +244,13 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     jump: { label: '점프', clip: 'Great_Sword_Jump', pipe: true, two: true, wy: 19, once: true, air: true, fade: 0.12, airT: [0.13, 0.64], airRate: 0.75, lift: 15 },   // 제자리·걷다가 점프: 조금 더 높고 길게
     rjump: { label: '달리며 점프', clip: 'Great_Sword_Jump_1', pipe: true, two: true, wy: 19, once: true, air: true, fade: 0.08, airT: [0.10, 0.56], airRate: 0.7, lift: 13, boost: 1.06 },   // 공중 구간만 천천히(체공 1.7배) + 더 높이 + 더 멀리
     slash: { label: '공격 1', clip: 'Great_Sword_Slash', pipe: true, two: true, wy: 19, once: true, fade: 0.1 },
-    slash2: { label: '공격 2', clip: 'Great_Sword_Slash2', pipe: true, two: true, wy: 19, once: true, fade: 0.12 },
+    slash2: { label: '공격 2', clip: 'Great_Sword_Slash', pipe: true, two: true, wy: 19, once: true, fade: 0.12, mirror: true },   // 2번: 1번을 반대 방향(왼쪽 위 → 오른쪽 아래)으로, 손잡이·발·숙임은 그대로
     impact: { label: '맞음', clip: 'Great_Sword_Impact', pipe: true, two: false, wy: 19, once: true, fade: 0.08, cancel: 0.8 },   // cancel: 이때부터는 움직이면 끊는다
     slash3: { label: '공격 3', clip: 'Great_Sword_Slash_3', pipe: true, two: true, wy: 19, once: true, fade: 0.12, rm: true },   // rm: 동작이 앞으로 나가는 만큼 실제로 이동(발 안 미끄러지게)
   };
   // 공격(3단 콤보 1-2-3): win 파이프가 맞을 수 있는 구간 · T 내려치는(정면 지나는) 순간 · chain 다음 공격으로 넘어가는 때 · ideal 파이프 끝이 맞는 거리 · minR 붙을 수 있는 거리
   ACTS.slash.atk = { win: [0.55, 0.8], T: 0.69, chain: 0.84, ideal: 77 };
-  ACTS.slash2.atk = { win: [0.78, 1.12], T: 1.02, chain: 1.16, ideal: 86, rate: 1.15 };   // rate: 2번은 살짝 빠르게
+  ACTS.slash2.atk = { win: [0.55, 0.8], T: 0.69, chain: 0.84, idealK: -5 };   // 2번(새 동작): 머리 위로 들었다가 왼쪽→앞→오른쪽 수평으로. rate: 살짝 빠르게
   ACTS.slash3.atk = { win: [0.6, 0.88], T: 0.8, aimT: 0.76, chain: 1.22, minR: 45, final: true, rate: 1.15, idealK: -3, end: 1.42 };   // end: 마지막 공격은 여기서 기본 자세로 넘어간다(후딜 줄임)   // idealK: 파이프 끝 닿는 거리(reach)에서 뺄 값으로 ideal을 정한다   // final: 마지막 공격 — 끝까지 자세를 잡고 후딜(REC)까지   // aimT: 겨누는 기준 순간(휘두른 파이프가 고블린 높이를 지날 때)
   ACTS.slash.atk.fx = ACTS.slash2.atk.fx = { sparks: 9, flash: 34 }; ACTS.slash3.atk.fx = { sparks: 64, flash: 72, spd: 1.35, life: 1.3, hs: 0.12, shk: 11, vib: 45 };
   ACTS.slash.atk.kb = ACTS.slash2.atk.kb = 14; ACTS.slash3.atk.kb = 75;   // 넉백 거리: 1·2번 살짝, 3번은 더(3번 끝나고 거리가 맞게)   // 타격 불꽃: 1·2번은 적게, 마지막 3번은 크게
@@ -240,8 +258,8 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
   // 이음 표: [앞 공격에서 넘어가는 때 ta, 다음 공격을 시작하는 곳 tb, 섞는 시간]
   //  맞는 간격 = 1번만 연타할 때 간격(약 1.2초)과 같게, 마지막 3번만 조금 더 길게. 재생은 원래 빠르기 그대로, 다음 공격은 들어 올리는 동작부터 다 휘두른다.
   //  그 간격 안에서 두 공격 자세가 가장 비슷한 곳끼리 붙였다(앞 동작은 계속 움직이며 섞는다)
-  const LINK = { slash: { slash2: [0.8, 0.0, 0.22, 0.08] },   // 1→2: 1번이 아직 움직일 때 넘어가 2번을 처음부터
-    slash2: { slash3: [1.35, 0.0, 0.22, 0.17] }, slash3: {} };   // 2→3: 2번이 아직 움직일 때 넘어가고, 앞당긴 만큼 3번 들어 올리기를 늘린다(넷째 값)
+  const LINK = { slash: { slash2: [1.15, 0.13, 0.26, 0.04] },   // 1→2: 1번이 아직 움직일 때 넘어가 2번을 처음부터
+    slash2: { slash3: [1.15, 0.13, 0.24, 0.05] }, slash3: {} };   // 2→3: 2번이 아직 움직일 때 넘어가고, 앞당긴 만큼 3번 들어 올리기를 늘린다(넷째 값)
   const REC = 0.12;   // 마지막 공격 뒤 자세 잡고 나서도 못 움직이는 시간(게임 속 초)
   const LATE = 0.24;
   const BUF_EARLY = 0.1;   // 1·2번: 맞기 이만큼 전부터 다음 공격 입력을 받는다   // 넘어가는 때를 이만큼 지나 누르면 다음 공격을 처음부터
@@ -289,7 +307,42 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
       const upW = Gt.clone().multiply(W0.get(B[sd + 'UpLeg'])), lgW = Gs.clone().multiply(W0.get(B[sd + 'Leg']));
       f.q.get(B[sd + 'UpLeg']).copy(Hq.clone().invert().multiply(upW)); f.q.get(B[sd + 'Leg']).copy(upW.clone().invert().multiply(lgW)); f.q.get(B[sd + 'Foot']).copy(lgW.clone().invert().multiply(LIVE_BASE.fq[sd])); }
     return f; }
-  function actFrame(a, t) { const f = baseOf(a);
+  // ── 반대 방향 내려치기(2번): 골반·다리·발은 1번 그대로, 골반 위(몸통·머리·어깨)만 골반 기준 좌우로 뒤집는다
+  //    손잡이는 그대로(오른손 위): 뒤집힌 파이프 줄에 오른손 위·왼손 아래로 다시 쥐게 팔 IK ──
+  const qMir = q => new T.Quaternion(q.x, -q.y, -q.z, q.w), vMir = v => V(-v.x, v.y, v.z);
+  const bName = b => b.name.replace(/^mixamorig:?/, ''), twinOf = b => { const n = bName(b), m = /^Left/.test(n) ? n.replace(/^Left/, 'Right') : /^Right/.test(n) ? n.replace(/^Right/, 'Left') : n; return B[m] || b; };
+  const ARM_L = { L1: P0.get(B.LeftForeArm).distanceTo(P0.get(B.LeftArm)), L2: P0.get(B.LeftHand).distanceTo(P0.get(B.LeftForeArm)) };
+  function twistAbout(q, ax) { const p = q.x * ax.x + q.y * ax.y + q.z * ax.z, t = new T.Quaternion(ax.x * p, ax.y * p, ax.z * p, q.w); const l = Math.hypot(t.x, t.y, t.z, t.w); return l < 1e-8 ? new T.Quaternion() : t.set(t.x / l, t.y / l, t.z / l, t.w / l); }
+  function mirrorFrame(a, t) {
+    const f0 = baseOf(a); clipInto(a.C, t, f0); applyFrame(f0); aimPipe(a.wy); root.updateMatrixWorld(true);
+    const rq = root.getWorldQuaternion(new T.Quaternion()), rqi = rq.clone().invert(), G = new Map(), Pos = b => root.worldToLocal(b.getWorldPosition(V()));
+    for (const b of order) G.set(b, rqi.clone().multiply(b.getWorldQuaternion(new T.Quaternion())));
+    const Ro = root.worldToLocal(pipe.localToWorld(V(0, a.wy, 0))), Lo = root.worldToLocal(B.LeftHand.localToWorld(LGC.clone())), HR = Pos(B.RightHand), HL = Pos(B.LeftHand), GR = G.get(B.RightHand).clone(), GL = G.get(B.LeftHand).clone();
+    // 골반·다리·발은 1번 그대로(앞으로 숙이는 것·디딤 그대로), 골반 위(몸통·머리·어깨)만 골반 기준으로 좌우 뒤집기
+    const hp0 = Pos(hips), Rh = G.get(hips).clone().multiply(W0.get(hips).clone().invert()), Rhi = Rh.clone().invert();
+    const mirP = v => { const h = v.clone().sub(hp0).applyQuaternion(Rhi); h.x = -h.x; return h.applyQuaternion(Rh).add(hp0); };
+    const mirD = d => Rh.clone().multiply(qMir(Rhi.clone().multiply(d)));   // 골반에 대한 상대 회전만 뒤집는다
+    const G1 = new Map(), f1 = { q: new Map(f0.q), hip: f0.hip.clone() };
+    for (const b of order) { const n = bName(b); if (b === hips || LEGS.test(n) || FING.test(n) || /^(Left|Right)(Arm|ForeArm|Hand)$/.test(n)) continue; const src = twinOf(b); G1.set(b, mirD(G.get(src).clone().multiply(W0.get(src).clone().invert())).multiply(W0.get(b))); }
+    for (const b of order) { if (!G1.has(b)) continue; f1.q.set(b, (G1.get(b.parent) || G.get(b.parent)).clone().invert().multiply(G1.get(b))); }
+    // 팔: 골반 기준으로 뒤집힌 파이프 줄에 오른손(위)·왼손(아래)
+    applyFrame(f1); root.updateMatrixWorld(true);
+    const Rm = mirP(Ro), Lm = mirP(Lo), po = Ro.clone().sub(Lo).normalize(), pm = Rm.clone().sub(Lm).normalize(), Rmin = new T.Quaternion().setFromUnitVectors(po, pm);
+    const tgt = { Right: { grip: Rm, G: Rmin.clone().multiply(GR), off: Ro.clone().sub(HR).applyQuaternion(GR.clone().invert()) }, Left: { grip: Lm, G: Rmin.clone().multiply(GL), off: Lo.clone().sub(HL).applyQuaternion(GL.clone().invert()) } };
+    for (const sd of ['Right', 'Left']) { const g = tgt[sd], W = g.grip.clone().sub(g.off.clone().applyQuaternion(g.G)), S = Pos(B[sd + 'Arm']), sg = sd === 'Left' ? 1 : -1;
+      const v = W.clone().sub(S); let d = v.length(); const vd = v.clone().normalize(); d = Math.min(d, (ARM_L.L1 + ARM_L.L2) * 0.999);
+      const pole = V(0.6 * sg, -1, -0.25).normalize(), perp = pole.clone().addScaledVector(vd, -vd.dot(pole)).normalize();
+      const ca = Math.max(-1, Math.min(1, (ARM_L.L1 * ARM_L.L1 + d * d - ARM_L.L2 * ARM_L.L2) / (2 * ARM_L.L1 * d))), sa = Math.sqrt(1 - ca * ca);
+      const E = S.clone().addScaledVector(vd, ARM_L.L1 * ca).addScaledVector(perp, ARM_L.L1 * sa), Wc = S.clone().addScaledVector(vd, d);
+      const ua1 = E.clone().sub(S).normalize(), fa1 = Wc.clone().sub(E).normalize(); let hinge = V().crossVectors(ua1, fa1); if (hinge.length() < 1e-4) hinge = V().crossVectors(ua1, perp); hinge.normalize();
+      const ua0 = dir(sd + 'Arm', sd + 'ForeArm'), fa0 = dir(sd + 'ForeArm', sd + 'Hand');
+      const Gua = frameRot(ua0, cr(ua0, Z), ua1, hinge).multiply(W0.get(B[sd + 'Arm']));
+      const Dfa0 = frameRot(fa0, cr(fa0, Z), fa1, hinge), Dh = g.G.clone().multiply(W0.get(B[sd + 'Hand']).clone().invert()), tw = twistAbout(Dh.clone().multiply(Dfa0.clone().invert()), fa1);
+      const Gfa = new T.Quaternion().slerp(tw, 0.5).multiply(Dfa0).multiply(W0.get(B[sd + 'ForeArm']));
+      const Gsh = G1.get(B[sd + 'Shoulder']) || G.get(B[sd + 'Shoulder']);
+      f1.q.set(B[sd + 'Arm'], Gsh.clone().invert().multiply(Gua)); f1.q.set(B[sd + 'ForeArm'], Gua.clone().invert().multiply(Gfa)); f1.q.set(B[sd + 'Hand'], Gfa.clone().invert().multiply(g.G)); }
+    return f1; }
+  function actFrame(a, t) { if (a.mirror) return mirrorFrame(a, t); const f = baseOf(a);
     if (a.idle) return breathe(idleFrame(a), t);
     clipInto(a.C, a.rev ? a.C.dur - t : t, f); if (a.A) clipInto(a.A, (t / a.C.dur) * a.A.dur % a.A.dur, f, ARMS); return f; }
   // 발이 바닥에 닿게: 클립 전체에서 가장 낮은 발목 높이를 쉬는 자세 발목 높이에 맞춘다
@@ -367,13 +420,14 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     else if (act.rm) ctl.v = tv;
     else ctl.v += (tv - ctl.v) * (1 - Math.exp(-dt * (lock ? 14 : 7)));
     const p = root.position, before = p.clone(); p.x += Math.sin(ctl.mv) * ctl.v * dt; p.z += Math.cos(ctl.mv) * ctl.v * dt;
-    const rr = Math.hypot(p.x, p.z); if (rr > ctl.R) { p.x *= ctl.R / rr; p.z *= ctl.R / rr; }
+    const RR = DG ? DG.RC : ctl.R, rr = Math.hypot(p.x, p.z); if (rr > RR) { p.x *= RR / rr; p.z *= RR / rr; }
+    if (DG) for (const c of DG.colliders) { const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), mr = c.r + 16; if (d < mr && d > 1e-3) { p.x += dx / d * (mr - d); p.z += dz / d * (mr - d); } }   // 천막·모닥불·수정 등
     if (GOB) { const gx = p.x - GOB.holder.position.x, gz = p.z - GOB.holder.position.z, gd = Math.hypot(gx, gz), tR = act.atk && act.atk.minR ? Math.min(GOB.gs.R, act.atk.minR) : GOB.gs.R;   // 붙을 수 있는 거리: 줄어들 땐 바로, 늘어날 땐 천천히(3번 끝나고 순간이동하듯 밀려나지 않게)
       ctl.minR = ctl.minR == null || tR < ctl.minR ? tR : ctl.minR + (tR - ctl.minR) * (1 - Math.exp(-dt * 2.5)); const mn = ctl.minR; if (gd < mn && gd > 1e-3) { p.x += gx / gd * (mn - gd); p.z += gz / gd * (mn - gd); } }
     if (GOB && act.atk && act.atk.ideal && !st.hitDone && st.t > ASSIST.PULL_T[0] && st.t < act.atk.T - 0.05) { const gx = GOB.holder.position.x - p.x, gz = GOB.holder.position.z - p.z, gd = Math.hypot(gx, gz);   // 휘두르며 파이프 끝이 맞는 거리로: 멀면 한 걸음 붙고, 너무 붙었으면 살짝 물러선다
       if (gd < ASSIST.D + 5 && !st.carry) { const left = ASSIST.MAX - (st.pull || 0), m = Math.max(-ASSIST.BACK * dt, -left, Math.min(gd - act.atk.ideal, ASSIST.PULL * dt, left)); st.pull = (st.pull || 0) + Math.abs(m); p.x += gx / gd * m; p.z += gz / gd * m; } }
     root.rotation.y = ctl.yaw;
-    key.position.copy(p).add(KEY_OFF); key.target.position.copy(p); }
+    key.position.copy(p).add(KEY_OFF); key.target.position.copy(p); if (HL) HL.position.set(p.x, 160, p.z); }
   function frame(dt) {
     const rdt = dt; dt *= GAME.speed;   // 게임 속 시간 빠르기: 내 공격·이동, 고블린 이동·공격이 같은 비율로
     if (HS.t > 0) { HS.t -= rdt; dt *= 0.04; }   // 맞는 순간 잠깐 멈춤(히트스톱, 실제 시간)
@@ -387,13 +441,13 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     if (st.fade < 1 && st.fromF) { st.fade = Math.min(1, st.fade + dt * st.speed / st.fadeDur); const k = EASE.io(st.fade); let F0 = st.fromF;
       if (st.from) { const fa = st.from.a; st.from.t += dt * st.from.sp; const ft = fa.once ? Math.min(st.from.t, fa.dur - 1e-3) : st.from.t % fa.dur; F0 = actFrame(fa, ft); }
       for (const [b, q] of f.q) { const q0 = F0.q.get(b); if (q0) q.copy(q0.clone().slerp(q, k)); } f.hip.lerpVectors(F0.hip, f.hip.clone(), k); }
-    applyFrame(f); if (a.two) aimPipe(a.wy); else if (a.pipe) setGrip(a.wy); lastF = f;   // 한 손 동작(피격)은 파이프를 오른손 기본 쥐기로
+    applyFrame(f); posePipe(a, t); lastF = f;   // 한 손 동작(피격)은 오른손 기본 쥐기, 두 손 동작은 두 주먹을 잇는 선(구간에 따라 오른손 방향)
     // 공격이 맞았나: 내려치는 동안 파이프(오른손~끝)가 지난 자리가 고블린 머리·몸통에 닿으면. 끝에 가까운 곳부터 본다
     if (GOB && a.atk && !st.hitDone && t > a.atk.win[0] && t < a.atk.win[1]) { let c = pipeContact(); if (!c && t >= a.atk.T) c = assistPoint(a);   // 닿았거나, 내려친 순간 사거리 안이면 맞는다
       if (c) { GOB.hit(root.position, a.atk.kb || 0); st.hitDone = true; hitFX(c, a.atk.fx); } }
     if (a.atk) PIPE_PREV = pipeSamples(); else PIPE_PREV = null;
     if (GOB) GOB.step(dt);
-    FX.step(rdt);
+    FX.step(rdt); if (DG) DG.update(performance.now() / 1000);
     fitShadow();
   }
   // 그림자 범위: 주인공과 (보이는 거리 안의) 고블린을 둘 다 감싸도록 매 프레임 맞춘다. 그림자가 떨어지는 바닥까지 깊이를 넉넉히
@@ -474,7 +528,7 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     const [gg, gBase, gNrm, club] = await Promise.all([new Promise((res, rej) => { const bin = atob(window.GOB_GLB), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); new T.GLTFLoader().parse(u8.buffer, '', res, rej); }), loadTex('gob_base.webp'), loadTex('gob_nrm.webp'), MAKE_CLUB()]);
     gBase.encoding = T.sRGBEncoding; gBase.anisotropy = 8;
     const g = gg.scene; let gsm = null; g.traverse(o => { if (o.isSkinnedMesh && !gsm) gsm = o; });
-    gsm.material = new T.MeshStandardMaterial({ map: gBase, normalMap: gNrm, roughness: 0.85, metalness: 0, envMapIntensity: 0.5, skinning: true });
+    gsm.material = new T.MeshStandardMaterial({ map: gBase, normalMap: gNrm, color: DUN ? 0xd9d9d9 : 0xffffff, roughness: 0.85, metalness: 0, envMapIntensity: ENV_K || 0.5, skinning: true });   // 던전: 밝은 피부가 튀지 않게 조금 낮춤
     gsm.frustumCulled = false; gsm.castShadow = true; gsm.receiveShadow = true;
     const GB = {}; g.traverse(o => { if (/^mixamorig/.test(o.name)) GB[o.name.replace(/^mixamorig:?/, '')] = o; });
     const holder = new T.Group(); holder.add(g); scene.add(holder);
@@ -521,6 +575,7 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     function hit(from, kb = 0) { if (kb > 0) { gs.kdir.set(holder.position.x - from.x, 0, holder.position.z - from.z).normalize(); gs.kb = kb * KB_K; }   // 넉백: 맞은 쪽 반대로 kb만큼 짧게 미끄러지듯
       if (gs.state === 'hit' && A.hit.time < 0.3) return false; gs.cd = Math.max(gs.cd, 0.9); go('hit', 0.06, 0); return true; }   // 맞는 동작은 그대로(옆으로 휘청)
     function step(dt) { gs.t += dt; gs.cd -= dt;
+      if (DG) { const hp = holder.position, r = Math.hypot(hp.x, hp.z); if (r > DG.RC) { hp.x *= DG.RC / r; hp.z *= DG.RC / r; } for (const c of DG.colliders) { const dx = hp.x - c.x, dz = hp.z - c.z, d = Math.hypot(dx, dz), mr = c.r + 14; if (d < mr && d > 1e-3) { hp.x += dx / d * (mr - d); hp.z += dz / d * (mr - d); } } }
       if (gs.kb > 0.5) { holder.position.addScaledVector(gs.kdir, gs.kb * dt); gs.kb *= Math.exp(-dt * KB_K); } else gs.kb = 0;
       const to = root.position.clone().sub(holder.position); to.y = 0; const dist = to.length(), ty = Math.atan2(to.x, to.z); let d = ty - gs.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
       const turn = rate => { gs.yaw += d * (1 - Math.exp(-dt * rate)); };
@@ -561,7 +616,7 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     for (let i = 0; i < cur.length; i++) for (const c of body) { const [pp, pb] = segSeg(prev[i], cur[i], c.a, c.b); if (pp.distanceTo(pb) < c.r + 4) { pipeContact.i = i; return pp; } }
     return null; }
   // 내려칠 때(0.65초) 파이프 끝이 오는 자리(몸 기준): 대각선으로 내려와 몸 정면에서 왼쪽으로 비켜 있다 → 휘두르는 동안 그만큼 틀어 겨눈다
-  for (const k of COMBO) { const a = ACTS[k]; if (a.atk.aim !== undefined) continue; applyFrame(actFrame(a, a.atk.aimT || a.atk.T)); aimPipe(a.wy); const q = root.worldToLocal(pipe.localToWorld(TIPV.clone())); a.atk.aim = Math.max(-0.6, Math.min(0.6, Math.atan2(q.x, q.z))); a.atk.reach = Math.hypot(q.x, q.z); }   // 겨눔: 내려치는 순간 파이프 끝 방향(±34° 안)
+  for (const k of COMBO) { const a = ACTS[k]; if (a.atk.aim !== undefined) continue; applyFrame(actFrame(a, a.atk.aimT || a.atk.T)); posePipe(a, a.atk.aimT || a.atk.T); const q = root.worldToLocal(pipe.localToWorld(TIPV.clone())); a.atk.aim = Math.max(-0.6, Math.min(0.6, Math.atan2(q.x, q.z))); a.atk.reach = Math.hypot(q.x, q.z); }   // 겨눔: 내려치는 순간 파이프 끝 방향(±34° 안)
   for (const k of COMBO) { const at = ACTS[k].atk; if (at.idealK !== undefined) at.ideal = at.reach + at.idealK; }
   ACTS.slash3.rmv = Math.hypot(...ACTS.slash3.C.drift) / ACTS.slash3.C.dur;   // 3번은 1.8초 동안 앞으로 61
   const STRIKE = { a: ACTS.slash.atk.aim };
@@ -576,7 +631,7 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
   const WARP_CACHE = {};
   function makeWarp(name, t0, extra) { const key = name + t0 + extra; if (WARP_CACHE[key]) return WARP_CACHE[key];
     const a = ACTS[name], t1 = a.atk.T - 0.1, dtc = 1 / 60, sp = [], keep = lastF ? cloneF(lastF) : null; let prev = null;
-    for (let t = t0; t < t1; t += dtc) { applyFrame(actFrame(a, t)); aimPipe(a.wy); root.updateMatrixWorld(true); const q = root.worldToLocal(pipe.localToWorld(TIPV.clone())); sp.push(prev ? q.distanceTo(prev) / dtc : 0); prev = q; }
+    for (let t = t0; t < t1; t += dtc) { applyFrame(actFrame(a, t)); posePipe(a, t); root.updateMatrixWorld(true); const q = root.worldToLocal(pipe.localToWorld(TIPV.clone())); sp.push(prev ? q.distanceTo(prev) / dtc : 0); prev = q; }
     if (sp.length > 1) sp[0] = sp[1];
     const med = [...sp].sort((x, y) => x - y)[Math.floor(sp.length / 2)] || 1, r = sp.map(v => Math.max(0.7, Math.min(2.4, Math.pow(med / Math.max(v, 30), 0.6))));
     const L = sp.length * dtc + extra, T0 = r.reduce((s, x) => s + dtc / x, 0), c = T0 / L; for (let i = 0; i < r.length; i++) r[i] *= c;
@@ -640,7 +695,7 @@ float eyeIn(vec2 q) { float t = (q.x - (${F(EYE.XI)})) / (${F(EYE.XO - EYE.XI)})
     const n = V(from.x - root.position.x, 0, from.z - root.position.z).normalize(), at = B.Spine2.getWorldPosition(V()).addScaledVector(n, 12).add(V(0, 6, 0));   // 맞은 자리: 가슴의 고블린 쪽
     FX.burst(at, n, { hero: true, red: true, sparks: 12, flash: 42, flashCol: [1.0, 0.22, 0.16] }); if (TOUCH && navigator.vibrate) try { navigator.vibrate(60); } catch (e) {} }
   if (GOB) GOB.onStrike = heroHit;
-  window.__dbg = { heroHit, ideals: () => COMBO.map(k => [k, ACTS[k].atk.reach.toFixed(0), ACTS[k].atk.ideal]), makeWarp, aims: () => ['slash', 'slash2', 'slash3'].map(k => (ACTS[k].atk.aim * 57.3).toFixed(0)), GAME, LINK, COMBO, ASSIST, assistPoint, STRIKE, pipeContact, pipeSamples, GOB_BODY, WALK_K, aimPipe, FX, HS, SHK, hitFX, CARRY, LOCK, B, P0, W0, AX, solve, applyFrame, root, sm, scene, cam, rd, controls, st, ACTS, CLIP, play, setCam, frame, camFrame, camFollow, QV, pipe, merge, CHK, actFrame, LGC, ctl, camSt, GOB };
+  window.__dbg = { posePipe, DG, heroHit, ideals: () => COMBO.map(k => [k, ACTS[k].atk.reach.toFixed(0), ACTS[k].atk.ideal]), makeWarp, aims: () => ['slash', 'slash2', 'slash3'].map(k => (ACTS[k].atk.aim * 57.3).toFixed(0)), GAME, LINK, COMBO, ASSIST, assistPoint, STRIKE, pipeContact, pipeSamples, GOB_BODY, WALK_K, aimPipe, FX, HS, SHK, hitFX, CARRY, LOCK, B, P0, W0, AX, solve, applyFrame, root, sm, scene, cam, rd, controls, st, ACTS, CLIP, play, setCam, frame, camFrame, camFollow, QV, pipe, merge, CHK, actFrame, LGC, ctl, camSt, GOB };
   $('#loading').hidden = true;
   let last = performance.now();
     function fogFit() { const dd = cam.position.distanceTo(controls.target); scene.fog.near = dd + 140; scene.fog.far = dd + 720; }
