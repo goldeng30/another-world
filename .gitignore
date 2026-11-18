@@ -1,0 +1,8 @@
+node_modules/
+dist/single/
+tests/out/
+work/
+dist/artifact/
+dist/artifact.html
+dist/publish.json
+__pycache__/

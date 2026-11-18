@@ -1,0 +1,13 @@
+{
+  "name": "another-world",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "bundle": "node tools/build.mjs --single",
+    "test": "node tests/smoke.cjs && node tests/goblin.cjs && node tests/enemy.cjs && node tests/gallery.cjs && node tests/hud.cjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.0"
+  }
+}

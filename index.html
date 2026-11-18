@@ -2,6 +2,9 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<title>이세계</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- pwa -->
 <meta name="theme-color" content="#0d1015">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -10,11 +13,10 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<title>이세계</title>
+<!-- /pwa -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
 <style>
   /* 모바일 가로 비율(844:390) 게임 화면. 컴퓨터에서는 이 비율로 맞춰 가운데 두고, 버튼도 화면 높이에 맞춰 같이 줄고 늘어난다 */
   :root {
@@ -35,9 +37,73 @@
   #game { --s: 1; --u: calc(var(--s) * 1px); position: relative; width: 100vw; height: 100vh; overflow: hidden; background: var(--bg); }
   #stage { position: absolute; inset: 0; }
   #view { display: block; width: 100%; height: 100%; touch-action: none; }
-  #title { position: absolute; z-index: 2; top: max(calc(10 * var(--u)), env(safe-area-inset-top, 0px)); left: max(calc(16 * var(--u)), env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: calc(2 * var(--u)); pointer-events: none; }
-  #title h1 { margin: 0; font: 400 calc(22 * var(--u))/1 var(--display); letter-spacing: 0.04em; }
-  #title span { font-size: calc(11 * var(--u)); color: var(--dim); letter-spacing: 0.08em; }
+  /* HUD: 던전 톤 — 검은 무쇠 테 · 바랜 뼈색 글자 · 어두운 풀빛(내 HP) · 어두운 남색(MP). 반짝임 없이
+     왼쪽 위 내 상태(등급·레벨) · 발밑 내 HP·MP · 위 가운데 보스(이름·큰 막대) · 적 머리 위 작은 막대 */
+  #game { --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .7 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); --bone: #d6cab6; --bone-dim: #8f8372;
+    --metal-frame: linear-gradient(180deg, #3e3d43 0%, #2c2b30 40%, #5a5960 80%, #8a8990 100%); --metal-track: linear-gradient(180deg, #1d1c20 0%, #26252a 35%, #333237 70%, #45444a 100%); --metal-cap: linear-gradient(180deg, #8f8e96 0%, #4a4950 30%, #3a393f 70%, #77767e 100%); }   /* 막대 테(보스 기준): 옅은 회색 쇠, 아래쪽이 밝음 · 빈 곳 · 양 끝 쇠판 */
+  #hud-me { position: absolute; z-index: 2; top: max(calc(12 * var(--u)), env(safe-area-inset-top, 0px)); left: max(calc(16 * var(--u)), env(safe-area-inset-left, 0px)); width: calc(150 * var(--u)); display: grid; gap: calc(4 * var(--u)); pointer-events: none; }
+  #hud-me::before, #hud-boss::before { content: ""; position: absolute; z-index: -1; pointer-events: none; background: radial-gradient(closest-side, rgba(2, 2, 3, 0.72), rgba(2, 2, 3, 0)); }
+  #hud-me::before { left: calc(-40 * var(--u)); top: calc(-30 * var(--u)); width: calc(220 * var(--u)); height: calc(84 * var(--u)); }
+  .me-id { display: flex; align-items: center; gap: calc(7 * var(--u)); margin-bottom: calc(2 * var(--u)); }
+  .me-rank, .me-rank b { clip-path: polygon(calc(3 * var(--u)) 0, calc(100% - 3 * var(--u)) 0, 100% calc(3 * var(--u)), 100% calc(100% - 3 * var(--u)), calc(100% - 3 * var(--u)) 100%, calc(3 * var(--u)) 100%, 0 calc(100% - 3 * var(--u)), 0 calc(3 * var(--u))); }
+  .me-rank { padding: 1px; background: linear-gradient(180deg, #4d4238, #17130f); }
+  .me-rank b { display: grid; place-items: center; height: calc(17 * var(--u)); padding: 0 calc(7 * var(--u)); font: 400 calc(11 * var(--u))/1 var(--display); letter-spacing: 0.04em; color: #a9764a; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 210, 160, 0.14);
+    background: var(--grain), radial-gradient(circle at 22% 30%, rgba(122, 58, 24, 0.55), rgba(122, 58, 24, 0) 45%), radial-gradient(circle at 80% 75%, rgba(98, 46, 20, 0.5), rgba(98, 46, 20, 0) 40%), linear-gradient(180deg, #2f2720, #15110d); }
+  .me-lv { font: 600 calc(10 * var(--u))/1 var(--ui); letter-spacing: 0.06em; color: var(--bone-dim); text-shadow: 0 1px 0 #000, 0 0 calc(6 * var(--u)) rgba(0, 0, 0, 0.9); }
+  .me-lv b { margin-left: calc(2 * var(--u)); font: 400 calc(17 * var(--u))/1 var(--display); letter-spacing: 0.02em; color: var(--bone); }
+  .bars { display: grid; gap: calc(4 * var(--u)); filter: drop-shadow(0 0 1px #000) drop-shadow(0 1px calc(2 * var(--u)) rgba(0, 0, 0, 0.8)); }
+  .bar { --h: calc(12 * var(--u)); --c: calc(3 * var(--u)); --fill: #6d1612; position: relative; height: var(--h); padding: 1px; background: linear-gradient(180deg, #5b544b 0%, #2a2620 45%, #1a1714 70%, #3a342d 100%); }
+  .bar, .bar .trk { clip-path: polygon(var(--c) 0, calc(100% - var(--c)) 0, 100% var(--c), 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, var(--c) 100%, 0 calc(100% - var(--c)), 0 var(--c)); }
+  .bar .trk { position: relative; height: 100%; overflow: hidden; background: linear-gradient(180deg, #030303, #0f0d0c 60%, #171410); }
+  .bar i { position: absolute; inset: 0; transform-origin: 0 50%; }
+  .bar .chip { background: linear-gradient(180deg, #a88c62, #6c5536); }
+  .bar .fill { background: var(--fill); }
+  .bar .tick { background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(0, 0, 0, 0.3) calc(10% - 1px) 10%), linear-gradient(180deg, rgba(255, 225, 200, 0.1), rgba(255, 225, 200, 0) 35%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.35)); opacity: 0.9; }
+  .bar .num { position: absolute; top: 0; bottom: 0; right: calc(var(--c) + 5 * var(--u)); display: flex; align-items: center; font: 600 calc(var(--h) * 0.68)/1 var(--ui); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; color: var(--bone); text-shadow: 0 1px 1px #000, 0 0 calc(3 * var(--u)) rgba(0, 0, 0, 0.95); }
+  /* 내 HP·MP: 발밑(화면에 옮긴 발 위치 아래). 칸 나누기 없이, 끝은 각지게. MP는 얇게 */
+  #hud-self { position: absolute; left: 0; top: 0; z-index: 1; width: calc(46 * var(--u)); margin: calc(9 * var(--u)) 0 0 calc(-23 * var(--u)); display: grid; gap: 1px; pointer-events: none; will-change: transform, opacity; opacity: 0; transition: opacity 0.5s ease; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9)); }
+  #hud-self.on { opacity: 1; }   /* 전투 상태(칼 빼기 시작 ~ 칼 넣기 전)에만 천천히 나타나고, 비전투 상태에선 천천히 사라진다 */
+  #hud-self .bar { --c: 0px; --cap: calc(0.7 * var(--u)); padding: 0.5px; background: var(--metal-frame); }   /* 내 막대: 테두리 더 가늘게 */
+  /* 양 끝 마감: 막대마다 따로, 막대와 같은 높이의 얇은 쇠판(보스 1.5 · 내 막대 1). 몬스터 막대는 없음 */
+  #hud-boss .bar::before, #hud-boss .bar::after, #hud-self .bar::before, #hud-self .bar::after { content: ""; position: absolute; z-index: 1; top: 0; bottom: 0; width: var(--cap, calc(1 * var(--u))); background: var(--metal-cap); }
+  .bar::before { left: 0; }
+  .bar::after { right: 0; }
+  #hud-self .hp { --h: calc(5 * var(--u)); --fill: linear-gradient(90deg, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.1) 55%, rgba(0, 0, 0, 0) 92%), linear-gradient(180deg, #78b864 0%, #4f9443 45%, #2d6327 100%); }   /* 내 HP: 밝은 풀빛 */
+  #hud-self .mp { --h: calc(3 * var(--u)); --fill: linear-gradient(90deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0) 92%), linear-gradient(180deg, #3a5a96 0%, #223a70 45%, #121f42 100%); }
+  #hud-self .hp .tick { background: linear-gradient(180deg, rgba(255, 230, 210, 0.05), rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.3)); }
+  #hud-self .mp .tick { background: linear-gradient(180deg, rgba(255, 230, 210, 0.05), rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.3)); }
+  #hud-self.low .hp .fill { animation: hud-low 0.9s ease-in-out infinite alternate; }
+  #hud-self.low .hp { background: #5a1a14; }
+  @keyframes hud-low { to { filter: brightness(1.5); } }
+  #hud-foes { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
+  /* 데미지 숫자: 이전과 같은 각진 고딕 숫자를 조금 얇게(Do Hyeon), 색은 던전 톤 — 바랜 양피지색 · 3타 꺼져 가는 불씨색 · 내가 받은 것 검붉은 핏빛. 얇은 검은 테 */
+  #hud-dmg { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+  .dmg { position: absolute; left: 0; top: 0; font: 400 calc(15 * var(--u))/1 "Do Hyeon", var(--display); letter-spacing: 0.03em; color: #cbbfa8; white-space: nowrap; will-change: transform, opacity;
+    text-shadow: 0 1px 0 #000, 1px 0 0 rgba(0, 0, 0, 0.8), -1px 0 0 rgba(0, 0, 0, 0.8), 0 -1px 0 rgba(0, 0, 0, 0.6), 0 0 calc(4 * var(--u)) rgba(0, 0, 0, 0.8); }
+  .dmg.fin { font-size: calc(19 * var(--u)); color: #cf8d4f; text-shadow: 0 1px 0 #000, 1px 0 0 rgba(0, 0, 0, 0.8), -1px 0 0 rgba(0, 0, 0, 0.8), 0 -1px 0 rgba(0, 0, 0, 0.6), 0 0 calc(6 * var(--u)) rgba(110, 45, 12, 0.6); }
+  .dmg.me { font-size: calc(14 * var(--u)); color: #b23b2f; }
+  .foe { position: absolute; left: 0; top: 0; width: calc(34 * var(--u)); margin: calc(-5 * var(--u)) 0 0 calc(-17 * var(--u)); opacity: 0; transition: opacity 0.5s ease; will-change: transform; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9)); }
+  .foe.on { opacity: 1; }   /* 전투에 들어가면 내 발밑 막대와 같은 빠르기로 나타나고, 전투가 풀리면 같이 사라진다 */
+  .foe .bar { --h: calc(3 * var(--u)); --c: 0px; padding: 0.5px; background: linear-gradient(180deg, #3a1a14 0%, #1a0b08 50%, #0a0403 100%); --fill: linear-gradient(90deg, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.1) 55%, rgba(0, 0, 0, 0) 92%), linear-gradient(180deg, #e0503a 0%, #b23321 55%, #7a1e10 100%); }   /* 적 HP: 밝은 핏빛 */
+  .foe .bar .trk { background: linear-gradient(180deg, #0c0504 0%, #170907 55%, #241009 100%); }   /* 몬스터: 검붉은 테 · 빈 곳도 검붉게(내 막대의 회색 쇠와 다르게), 끝판 없음 */
+  .foe .bar .tick { background: linear-gradient(180deg, rgba(255, 230, 210, 0.05), rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.3)); }
+  .foe .bar .chip, #hud-self .bar .chip { background: linear-gradient(180deg, #7d6a5a, #4f4237); }   /* 깎인 부분: 흐리고 어둡게(너무 하얗지 않게) */
+  #hud-boss { position: absolute; z-index: 2; top: max(calc(12 * var(--u)), env(safe-area-inset-top, 0px)); left: 50%; width: calc(300 * var(--u)); margin-left: calc(-150 * var(--u)); display: grid; gap: calc(5 * var(--u)); pointer-events: none; opacity: 0; transform: translateY(calc(-6 * var(--u))); transition: opacity 0.4s, transform 0.4s; }
+  #hud-boss.on { opacity: 1; transform: none; }
+  #hud-boss::before { left: -24%; right: -24%; top: calc(-28 * var(--u)); height: calc(88 * var(--u)); }
+  .boss-name { display: flex; align-items: center; justify-content: center; gap: calc(10 * var(--u)); }
+  .boss-name::before, .boss-name::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(120, 34, 24, 0), rgba(150, 46, 32, 0.85)); }
+  .boss-name::after { transform: scaleX(-1); }
+  .boss-name span { font: 400 calc(14 * var(--u))/1 var(--display); letter-spacing: 0.16em; color: var(--bone); text-shadow: 0 1px 0 #000, 0 0 calc(8 * var(--u)) rgba(130, 20, 12, 0.75); }
+  /* 보스 막대: 가늘고 긴 막대 · 옅은 회색 쇠 테(아래쪽이 밝음) · 바랜 진홍 */
+  #hud-boss { width: calc(340 * var(--u)); margin-left: calc(-170 * var(--u)); }
+  #hud-boss .bars { display: block; }
+  #hud-boss .bar { --h: calc(7 * var(--u)); --cap: calc(1.5 * var(--u)); --c: calc(3.5 * var(--u)); padding: 1px; background: var(--metal-frame);
+    --fill: linear-gradient(180deg, #3c2125 0%, #62303a 22%, #70313d 42%, #622b37 64%, #57303a 84%, #70545b 100%); }
+  #hud-boss .bar .trk, #hud-self .bar .trk { background: var(--metal-track); }
+  #hud-boss .bar .chip { background: linear-gradient(180deg, #8d7f6c, #6a5e50 60%, #8a8072); }
+  #hud-boss .bar .tick { background: none; }
+  #hud-boss .bar, #hud-boss .bar .trk { clip-path: none; }
   /* 왼쪽 조이스틱 */
   #joy { position: absolute; z-index: 2; left: max(calc(22 * var(--u)), env(safe-area-inset-left, 0px)); bottom: max(calc(20 * var(--u)), env(safe-area-inset-bottom, 0px)); width: calc(136 * var(--u)); height: calc(136 * var(--u)); touch-action: none; }
   #joy-base { position: absolute; inset: 0; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); box-shadow: inset 0 0 calc(24 * var(--u)) rgba(0, 0, 0, 0.35); }
@@ -50,7 +116,8 @@
   /* 맞았을 때 화면 가장자리 붉게 */
   #hurt { position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 48%, rgba(170, 14, 20, 0.62) 100%); }
   [hidden] { display: none !important; }
-  #loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: calc(14 * var(--u)); z-index: 3; pointer-events: none; }
+  #loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: calc(10 * var(--u)); color: var(--dim); font-size: calc(14 * var(--u)); z-index: 3; pointer-events: none; }
+  #loading i { display: block; width: calc(120 * var(--u)); height: 2px; background: var(--gate); transform: scaleX(0); transform-origin: left; transition: transform 0.15s; }
   /* 시작: 누르면 전체화면으로 */
   #start { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(5, 7, 10, 0.72); }
   #b-start { min-width: 168px; padding: 16px 40px; border-radius: 999px; border: 0; background: var(--gate); color: var(--gate-ink); font: 400 24px/1 var(--display); letter-spacing: 0.08em; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -58,62 +125,41 @@
   .st-in { display: grid; justify-items: center; gap: 14px; }
   #ios-tip { margin: 0; color: var(--dim); font-size: 13px; letter-spacing: 0.02em; }
   #b-fs { position: absolute; z-index: 2; top: max(calc(10 * var(--u)), env(safe-area-inset-top, 0px)); right: max(calc(14 * var(--u)), env(safe-area-inset-right, 0px)); width: calc(34 * var(--u)); height: calc(34 * var(--u)); padding: 0; display: grid; place-items: center; border-radius: calc(8 * var(--u)); border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
-  #b-fs svg { width: 58%; height: 58%; }
+  #b-fs svg, #b-room svg, #b-reroll svg { width: 58%; height: 58%; }
+  #b-reroll { position: absolute; z-index: 2; top: max(calc(10 * var(--u)), env(safe-area-inset-top, 0px)); right: calc(max(calc(14 * var(--u)), env(safe-area-inset-right, 0px)) + 84 * var(--u)); width: calc(34 * var(--u)); height: calc(34 * var(--u)); padding: 0; display: grid; place-items: center; border-radius: calc(8 * var(--u)); border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+  #b-room { position: absolute; z-index: 2; top: max(calc(10 * var(--u)), env(safe-area-inset-top, 0px)); right: calc(max(calc(14 * var(--u)), env(safe-area-inset-right, 0px)) + 42 * var(--u)); width: calc(34 * var(--u)); height: calc(34 * var(--u)); padding: 0; display: grid; place-items: center; border-radius: calc(8 * var(--u)); border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
 </style>
 </head>
 <body>
-
 <div id="game">
   <div id="stage"><canvas id="view"></canvas></div>
   <div id="hurt"></div>
-  <div id="loading">불러오는 중</div>
-  <div id="title"><h1>이세계</h1><span>한도윤 · F급</span></div>
+  <div id="loading"><span>불러오는 중</span><i id="loading-bar"></i></div>
+  <div id="hud-foes"></div>
+  <div id="hud-dmg"></div>
+  <div id="hud-me"><div class="me-id"><span class="me-rank"><b>F급</b></span><span class="me-lv">Lv.<b>1</b></span></div></div>
+  <div id="hud-self"><div class="bar hp"></div><div class="bar mp"></div></div>
+  <div id="hud-boss"><div class="boss-name"><span></span></div><div class="bars"><div class="bar"></div></div></div>
   <button id="b-fs" type="button" aria-label="전체화면" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  <button id="b-reroll" type="button" aria-label="다시 뽑기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+  <button id="b-room" type="button" aria-label="전시장"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg></button>
   <div id="joy" aria-label="방향"><div id="joy-base"></div><div id="joy-knob"></div></div>
   <div id="pad">
     <button class="cb" id="b-atk" tabindex="-1">공격</button>
   </div>
 </div>
-<script>
-  // 화면 맞추기: 휴대폰(터치)은 화면 가득, 컴퓨터는 모바일 가로 비율(844:390)로 맞춰 가운데. 버튼 크기는 화면 높이 390 기준 비율.
-  (function () { const ASP = 844 / 390, g = document.getElementById('game'), touch = matchMedia('(pointer: coarse)').matches;
-    function fit() { const W = innerWidth, H = innerHeight; let w = W, h = H, s;
-      if (touch) s = Math.min(1.25, Math.max(0.7, Math.min(h, w * 0.46) / 390));   // 세로로 들어도 버튼이 겹치지 않게 폭에도 맞춘다
-      else { if (W / H > ASP) w = Math.round(H * ASP); else h = Math.round(W / ASP); s = h / 390; }
-      g.style.width = w + 'px'; g.style.height = h + 'px'; g.style.setProperty('--s', s.toFixed(4)); }
-    addEventListener('resize', fit); fit(); })();
-</script>
 <div id="start"><div class="st-in"><button id="b-start" type="button">시작</button><p id="ios-tip" hidden>전체화면: 공유 → 홈 화면에 추가</p></div></div>
-<script>
-  // 전체화면: 시작 버튼(사용자가 눌러야 브라우저가 허락) · 빠져나오면 오른쪽 위 버튼으로 다시. 휴대폰은 가로로 고정 시도
-  (function () { const de = document.documentElement, req = de.requestFullscreen || de.webkitRequestFullscreen, fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
-    const enter = () => { try { const r = req && req.call(de, { navigationUI: 'hide' }); if (r && r.then) r.then(() => { try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }).catch(() => {}); } catch (e) {} };
-    const standalone = navigator.standalone || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches, ios = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    if (ios && !standalone && !req) document.getElementById('ios-tip').hidden = false;   // 아이폰 사파리는 전체화면이 안 돼서 홈 화면 추가 안내
-    document.addEventListener('gesturestart', e => e.preventDefault());   // 두 손가락 확대 막기
-    const fsBtn = document.getElementById('b-fs'), sync = () => { fsBtn.hidden = !req || standalone || !!fsEl(); };
-    document.getElementById('b-start').addEventListener('click', () => { enter(); document.getElementById('start').hidden = true; });
-    fsBtn.addEventListener('click', enter); document.addEventListener('fullscreenchange', sync); document.addEventListener('webkitfullscreenchange', sync); sync(); })();
-</script>
 
+<!-- three -->
 <script src="lib/three.min.js"></script>
 <script src="lib/GLTFLoader.js"></script>
-<script src="lib/OrbitControls.js"></script>
-<script src="doyun_glb.js"></script>
-<script src="clips.js"></script>
-<script src="pipe.js"></script>
-<script src="club.js"></script>
-<script src="gob_glb.js"></script>
-<script src="gob_clips.js"></script>
-<script src="hunter_glb.js"></script>
-<script src="gate_glb.js"></script>
-<script src="totem_glb.js"></script>
-<script src="loot_glb.js"></script>
-<script src="dungeon.js"></script>
-<script src="app.js"></script>
+<!-- /three -->
+<script src="dist/game.js"></script>
+<!-- pwa -->
 <script>
-  // 한 번 받은 뒤엔 기기에 저장해 두고 빨리 연다(오프라인에서도)
+  // 홈 화면 앱: 파일을 기기에 저장해 두고 먼저 꺼내 쓴다(sw.js)
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
+<!-- /pwa -->
 </body>
 </html>
